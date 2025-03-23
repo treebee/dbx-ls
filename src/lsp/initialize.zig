@@ -25,8 +25,28 @@ pub const InitializeResult = struct {
 
     const ServerCapabilities = struct {
         textDocumentSync: u8,
+        //notebookDocumentSync: NotebookDocumentSyncOptions,
         hoverProvider: bool,
     };
+
+    const NotebookDocumentSyncOptions = struct {
+        mode: []const u8,
+        notebookSelector: NotebookSelector,
+    };
+
+    const NotebookSelector = struct {
+        notebook: NotebookCellTextDocumentFilter,
+        cells: ?[1]NotebookCell,
+    };
+};
+
+pub const NotebookCellTextDocumentFilter = struct {
+    scheme: []const u8,
+    notebookType: []const u8,
+};
+
+pub const NotebookCell = struct {
+    language: []const u8,
 };
 
 pub const InitializeResponse = struct {
@@ -37,10 +57,14 @@ pub const InitializeResponse = struct {
 pub fn NewInitializeResponse(id: usize) InitializeResponse {
     return InitializeResponse{
         .id = id,
-        .result = InitializeResult{ .serverInfo = .{ .name = "dbxls", .version = "0.1alpha" }, .capabilities = .{
-            .textDocumentSync = 1,
-            .hoverProvider = true,
-        } },
+        .result = InitializeResult{
+            .serverInfo = .{ .name = "dbxls", .version = "0.1alpha" },
+            .capabilities = .{
+                .textDocumentSync = 1,
+                // .notebookDocumentSync = .{ .mode = "notebook", .notebookSelector = .{ .notebook = NotebookCellTextDocumentFilter{ .scheme = "file", .notebookType = "jupyter-notebook" }, .cells = [1]NotebookCell{.{ .language = "python" }} } },
+                .hoverProvider = true,
+            },
+        },
     };
 }
 

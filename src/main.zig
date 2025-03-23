@@ -4,12 +4,67 @@
 
 const log = std.log.scoped(.main);
 
+pub const std_options: std.Options = .{
+    // Always set this to debug to make std.log call into our handler, then control the runtime
+    // value in logFn itself
+    .log_level = .debug,
+    .logFn = logFn,
+};
+
+var log_stderr: bool = true;
+var log_level: std.log.Level = .info;
+var log_file: ?std.fs.File = null;
+
+pub fn logFn(
+    comptime level: std.log.Level,
+    comptime scope: @Type(.enum_literal),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    var buffer: [4096]u8 = undefined;
+    _ = std.fmt.bufPrint(&buffer, format, args) catch return;
+
+    const level_txt: []const u8 = switch (level) {
+        .err => "error",
+        .warn => "warn ",
+        .info => "info ",
+        .debug => "debug",
+    };
+    const scope_txt: []const u8 = comptime @tagName(scope);
+
+    var fbs = std.io.fixedBufferStream(&buffer);
+    const no_space_left = blk: {
+        fbs.writer().print("{s} ({s:^6}): ", .{ level_txt, scope_txt }) catch break :blk true;
+        fbs.writer().print(format, args) catch break :blk true;
+        fbs.writer().writeByte('\n') catch break :blk true;
+        break :blk false;
+    };
+    if (no_space_left) {
+        buffer[buffer.len - 4 ..][0..4].* = "...\n".*;
+    }
+
+    std.debug.lockStdErr();
+    defer std.debug.unlockStdErr();
+
+    if (log_stderr) {
+        std.io.getStdErr().writeAll(fbs.getWritten()) catch {};
+    }
+
+    if (log_file) |file| {
+        file.seekFromEnd(0) catch {};
+        file.writeAll(fbs.getWritten()) catch {};
+    }
+}
+
 pub fn main() !void {
     const reader = std.io.getStdIn().reader().any();
     const stdout = std.io.getStdOut().writer();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+
+    log_file = try std.fs.cwd().createFile("log.txt", .{});
+    defer log_file.?.close();
 
     var args = try std.process.ArgIterator.initWithAllocator(arena.allocator());
 
@@ -30,35 +85,90 @@ pub fn main() !void {
             std.process.exit(0);
         }
     }
+
+    var state = State.init(arena.allocator());
+
     while (true) {
         const header = try protocol.LSPHeader.parse(reader);
         const json_message = try std.heap.page_allocator.alloc(u8, header.content_length);
         defer std.heap.page_allocator.free(json_message);
 
         try reader.readNoEof(json_message);
-        log.info("json_message: '{s}'", .{json_message});
+        log.info("'{s}'\n", .{json_message});
 
         const method = try rpc.parseMethod(arena.allocator(), json_message);
-        log.info("GOT MESSAGE FOR METHOD: {s}", .{method});
         if (std.mem.eql(u8, method, "initialize")) {
             const init_request = try std.json.parseFromSliceLeaky(initialize.InitializeRequest, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
-            const client_info = init_request.params.clientInfo.?;
-            log.info("client_info: {{name: {s}, version: {s}}}", .{ client_info.name, client_info.version });
             const response = try rpc.encodeMessage(arena.allocator(), initialize.NewInitializeResponse(init_request.id));
-            log.info("sending reply: {s}\n", .{response});
             try stdout.print("{s}", .{response});
         } else if (std.mem.eql(u8, method, "textDocument/didOpen")) {
             const open_request = try std.json.parseFromSliceLeaky(TextDocumentDidOpenNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
-            log.info("didOpen: {s}", .{open_request.params.textDocument.text.?});
+            log.info("didOpen: {s}\n", .{open_request.params.textDocument.text.?});
+            const document = open_request.params.textDocument;
+            if (std.mem.eql(u8, document.languageId.?, "python")) {
+                try parse_notebook(&state, document.uri, document.text.?);
+            }
+            log.info("state: {s}\n", .{state});
         } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
             const change_request = try std.json.parseFromSliceLeaky(TextDocumentDidChangeNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
-            log.info("didChange: {any}", .{change_request.params.contentChanges});
+            log.info("didChange: {any}\n", .{change_request.params.contentChanges});
         } else if (std.mem.eql(u8, method, "textDocument/hover")) {
             const hover_request = try std.json.parseFromSliceLeaky(TextDocumentHoverNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
-            log.info("hover: {any}", .{hover_request.params});
+            log.info("hover: {any}\n", .{hover_request.params});
         }
     }
 }
+
+pub fn parse_notebook(state: *State, uri: []const u8, content: []const u8) !void {
+    try state.notebooks.put(uri, .{ .text = content });
+}
+
+pub const State = struct {
+    notebooks: std.hash_map.StringHashMap(ParsedNotebook),
+
+    pub fn init(allocator: std.mem.Allocator) State {
+        return State{
+            .notebooks = std.hash_map.StringHashMap(ParsedNotebook).init(allocator),
+        };
+    }
+
+    pub const ParsedNotebook = struct {
+        text: []const u8,
+    };
+
+    pub fn format(
+        self: State,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+
+        var notebook_iter = self.notebooks.keyIterator();
+        while (notebook_iter.next()) |uri| {
+            try writer.print("{s} {s}", .{ uri.*, self.notebooks.get(uri.*).?.text });
+        }
+
+        try writer.writeAll("");
+    }
+};
+pub const NotebookDocument = struct {
+    uri: []const u8,
+    version: usize,
+};
+
+pub const NotebookDocumentChangeEvent = struct {
+    cells: []NotebookCell,
+
+    pub const NotebookCell = struct {
+        language: []const u8,
+        value: [][]const u8,
+    };
+};
+pub const NotebookDocumentDidChangeNotification = struct {
+    jsonrpc: []const u8,
+};
 
 pub const TextDocumentItem = struct {
     uri: []const u8,
