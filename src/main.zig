@@ -106,7 +106,7 @@ pub fn main() !void {
             log.info("didOpen: {s}\n", .{open_request.params.textDocument.text.?});
             const document = open_request.params.textDocument;
             if (std.mem.eql(u8, document.languageId.?, "python")) {
-                try parse_notebook(&state, document.uri, document.text.?);
+                try parse_notebook(arena.allocator(), &state, document.uri, document.text.?);
             }
             log.info("state: {s}\n", .{state});
         } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
@@ -119,10 +119,47 @@ pub fn main() !void {
     }
 }
 
-pub fn parse_notebook(state: *State, uri: []const u8, content: []const u8) !void {
-    try state.notebooks.put(uri, .{ .text = content });
+pub fn parse_notebook(allocator: std.mem.Allocator, state: *State, uri: []const u8, content: []const u8) !void {
+    var line_iter = std.mem.splitSequence(u8, content, "\n");
+    const first = line_iter.next().?;
+    if (!std.mem.startsWith(u8, first, "# Databricks notebook source")) {
+        log.info("Not a databricks notebook: {s}", .{uri});
+    }
+
+    var buffer: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buffer);
+    var previous_is_magic = false;
+    var notebook_cells = std.ArrayList(NotebookCell).init(allocator);
+    while (line_iter.next()) |line| {
+        if (std.mem.startsWith(u8, line, "# MAGIC ")) {
+            log.info("Magic open", .{});
+            if (previous_is_magic) {
+                try fbs.writer().print("{s}", .{line});
+                try fbs.writer().writeByte('\n');
+            } else {
+                try notebook_cells.append(NotebookCell{ .language = "todo", .text = fbs.getWritten() });
+                fbs.reset();
+                previous_is_magic = true;
+            }
+        } else if (std.mem.startsWith(u8, line, "# COMMAND ----------")) {
+            log.info("Command open", .{});
+            log.info("Cell content: {s}", .{fbs.getWritten()});
+            try notebook_cells.append(NotebookCell{ .language = "todo", .text = fbs.getWritten() });
+            fbs.reset();
+            previous_is_magic = false;
+        } else {
+            try fbs.writer().print("{s}", .{line});
+            try fbs.writer().writeByte('\n');
+        }
+    }
+    try notebook_cells.append(NotebookCell{ .language = "todo", .text = fbs.getWritten() });
+    try state.notebooks.put(uri, .{ .cells = notebook_cells.items });
 }
 
+pub const NotebookCell = struct {
+    language: []const u8,
+    text: []const u8,
+};
 pub const State = struct {
     notebooks: std.hash_map.StringHashMap(ParsedNotebook),
 
@@ -133,7 +170,7 @@ pub const State = struct {
     }
 
     pub const ParsedNotebook = struct {
-        text: []const u8,
+        cells: []NotebookCell,
     };
 
     pub fn format(
@@ -147,7 +184,9 @@ pub const State = struct {
 
         var notebook_iter = self.notebooks.keyIterator();
         while (notebook_iter.next()) |uri| {
-            try writer.print("{s} {s}", .{ uri.*, self.notebooks.get(uri.*).?.text });
+            for (self.notebooks.get(uri.*).?.cells) |cell| {
+                try writer.print("uri = {s} text = {s}", .{ uri.*, cell.text });
+            }
         }
 
         try writer.writeAll("");
@@ -158,18 +197,18 @@ pub const NotebookDocument = struct {
     version: usize,
 };
 
-pub const NotebookDocumentChangeEvent = struct {
-    cells: []NotebookCell,
-
-    pub const NotebookCell = struct {
-        language: []const u8,
-        value: [][]const u8,
-    };
-};
-pub const NotebookDocumentDidChangeNotification = struct {
-    jsonrpc: []const u8,
-};
-
+// pub const NotebookDocumentChangeEvent = struct {
+//     cells: []NotebookCell,
+//
+//     pub const NotebookCell = struct {
+//         language: []const u8,
+//         value: [][]const u8,
+//     };
+// };
+// pub const NotebookDocumentDidChangeNotification = struct {
+//     jsonrpc: []const u8,
+// };
+//
 pub const TextDocumentItem = struct {
     uri: []const u8,
     languageId: ?[]const u8 = null,
