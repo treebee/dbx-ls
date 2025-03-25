@@ -1,12 +1,6 @@
-//! By convention, main.zig is where your main function lives in the case that
-//! you are building an executable. If you are making a library, the convention
-//! is to delete this file and start with root.zig instead.
-
 const log = std.log.scoped(.main);
 
 pub const std_options: std.Options = .{
-    // Always set this to debug to make std.log call into our handler, then control the runtime
-    // value in logFn itself
     .log_level = .debug,
     .logFn = logFn,
 };
@@ -219,18 +213,6 @@ pub const NotebookDocument = struct {
     version: usize,
 };
 
-// pub const NotebookDocumentChangeEvent = struct {
-//     cells: []NotebookCell,
-//
-//     pub const NotebookCell = struct {
-//         language: []const u8,
-//         value: [][]const u8,
-//     };
-// };
-// pub const NotebookDocumentDidChangeNotification = struct {
-//     jsonrpc: []const u8,
-// };
-//
 pub const TextDocumentItem = struct {
     uri: []const u8,
     languageId: ?[]const u8 = null,

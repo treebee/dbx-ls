@@ -6,6 +6,8 @@ pub const LSPHeader = struct {
 
     pub const max_header_length: usize = 1024;
 
+    /// Parses a message received via stdout into a `LSPHeader`
+    /// which contains the `content_length`
     pub fn parse(reader: std.io.AnyReader) !LSPHeader {
         var content_length: usize = undefined;
 
