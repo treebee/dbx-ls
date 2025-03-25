@@ -119,47 +119,68 @@ pub fn main() !void {
     }
 }
 
+fn write_line(writer: anytype, line: []const u8) !void {
+    try writer.print("{s}", .{line});
+    try writer.writeByte('\n');
+}
+
 pub fn parse_notebook(allocator: std.mem.Allocator, state: *State, uri: []const u8, content: []const u8) !void {
     var line_iter = std.mem.splitSequence(u8, content, "\n");
     const first = line_iter.next().?;
     if (!std.mem.startsWith(u8, first, "# Databricks notebook source")) {
         log.info("Not a databricks notebook: {s}", .{uri});
+        return error.NotANotebookDocument;
     }
 
     var buffer: [4096]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buffer);
     var previous_is_magic = false;
     var notebook_cells = std.ArrayList(NotebookCell).init(allocator);
+
+    var language = "py";
     while (line_iter.next()) |line| {
+        if (std.mem.eql(u8, line, "\n")) {
+            log.debug("{s}\n", .{line});
+            continue;
+        }
         if (std.mem.startsWith(u8, line, "# MAGIC ")) {
-            log.info("Magic open", .{});
-            if (previous_is_magic) {
-                try fbs.writer().print("{s}", .{line});
-                try fbs.writer().writeByte('\n');
-            } else {
-                try notebook_cells.append(NotebookCell{ .language = "todo", .text = fbs.getWritten() });
-                fbs.reset();
-                previous_is_magic = true;
+            if (std.mem.startsWith(u8, line, "# MAGIC %sh")) {
+                language = "sh";
+            } else if (std.mem.startsWith(u8, line, "# MAGIC %md")) {
+                language = "md";
             }
+
+            log.info("Magic open", .{});
+            try write_line(fbs.writer(), line);
+            previous_is_magic = true;
         } else if (std.mem.startsWith(u8, line, "# COMMAND ----------")) {
-            log.info("Command open", .{});
-            log.info("Cell content: {s}", .{fbs.getWritten()});
-            try notebook_cells.append(NotebookCell{ .language = "todo", .text = fbs.getWritten() });
+            log.debug("TEXT: {s}\n*******************\n", .{fbs.getWritten()});
+            const cell_content = try std.fmt.allocPrint(allocator, "{s}", .{fbs.getWritten()});
+            try notebook_cells.append(NotebookCell.init(language, cell_content));
             fbs.reset();
             previous_is_magic = false;
         } else {
-            try fbs.writer().print("{s}", .{line});
-            try fbs.writer().writeByte('\n');
+            try write_line(fbs.writer(), line);
+            previous_is_magic = false;
         }
     }
-    try notebook_cells.append(NotebookCell{ .language = "todo", .text = fbs.getWritten() });
+    log.debug("TEXT: {s}|{d}\n*******************\n", .{ fbs.getWritten(), try fbs.getPos() });
+    if (try fbs.getPos() > 1) {
+        const cell_content = try std.fmt.allocPrint(allocator, "{s}", .{fbs.getWritten()});
+        try notebook_cells.append(NotebookCell{ .language = language, .text = cell_content });
+    }
     try state.notebooks.put(uri, .{ .cells = notebook_cells.items });
 }
 
 pub const NotebookCell = struct {
     language: []const u8,
     text: []const u8,
+
+    pub fn init(language: []const u8, text: []const u8) @This() {
+        return NotebookCell{ .language = language, .text = text };
+    }
 };
+
 pub const State = struct {
     notebooks: std.hash_map.StringHashMap(ParsedNotebook),
 
@@ -184,8 +205,9 @@ pub const State = struct {
 
         var notebook_iter = self.notebooks.keyIterator();
         while (notebook_iter.next()) |uri| {
-            for (self.notebooks.get(uri.*).?.cells) |cell| {
-                try writer.print("uri = {s} text = {s}", .{ uri.*, cell.text });
+            try writer.print("uri = {s}\n", .{uri.*});
+            for (0.., self.notebooks.get(uri.*).?.cells) |i, cell| {
+                try writer.print("\t({d}) {s} {s}\n", .{ i, cell.language, cell.text });
             }
         }
 
