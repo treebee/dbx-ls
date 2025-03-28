@@ -1,11 +1,16 @@
 const std = @import("std");
 
+pub const WorkspaceFolder = struct {
+    name: []const u8,
+    uri: []const u8,
+};
 pub const InitializeRequest = struct {
     id: usize,
     params: InitializeParams,
 
     const InitializeParams = struct {
         clientInfo: ?ClientInfo,
+        workspaceFolders: ?[]WorkspaceFolder,
 
         pub const ClientInfo = struct {
             name: []u8,

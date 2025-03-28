@@ -53,7 +53,8 @@ pub fn main() !void {
     const reader = std.io.getStdIn().reader().any();
     const stdout = std.io.getStdOut().writer();
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const allocator = std.heap.page_allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
     log_file = try std.fs.cwd().createFile("log.txt", .{});
@@ -87,11 +88,12 @@ pub fn main() !void {
         defer std.heap.page_allocator.free(json_message);
 
         try reader.readNoEof(json_message);
-        log.info("'{s}'\n", .{json_message});
 
         const method = try rpc.parseMethod(arena.allocator(), json_message);
         if (std.mem.eql(u8, method, "initialize")) {
             const init_request = try std.json.parseFromSliceLeaky(initialize.InitializeRequest, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
+            log.info("{any}\n", .{init_request});
+            try analyze.scan_project(arena.allocator(), &state, init_request.params.workspaceFolders.?[0]);
             const response = try rpc.encodeMessage(arena.allocator(), initialize.NewInitializeResponse(init_request.id));
             try stdout.print("{s}", .{response});
         } else if (std.mem.eql(u8, method, "textDocument/didOpen")) {
@@ -101,12 +103,13 @@ pub fn main() !void {
             if (std.mem.eql(u8, document.languageId.?, "python")) {
                 try parser.parse_notebook(arena.allocator(), &state, document.uri, document.text.?);
             }
-            log.info("STATE *****************\n", .{});
-            log.info("state: {s}\n", .{state});
-            log.info("******************************", .{});
-        } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
+            //     log.info("STATE *****************\n", .{});
+            //     log.info("state: {s}\n", .{state});
+            //     log.info("******************************", .{});
+            // } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
             const change_request = try std.json.parseFromSliceLeaky(TextDocumentDidChangeNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
-            log.info("didChange: {any}\n", .{change_request.params.contentChanges});
+            _ = change_request;
+            //log.info("didChange: {any}\n", .{change_request.params.contentChanges});
         } else if (std.mem.eql(u8, method, "textDocument/hover")) {
             const hover_request = try std.json.parseFromSliceLeaky(TextDocumentHoverNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
             log.info("hover: {any}\n", .{hover_request.params});
@@ -123,6 +126,7 @@ const lib = @import("dbx-ls_lib");
 const State = @import("state.zig").State;
 const parser = @import("parser.zig");
 const text_document = @import("text_document.zig");
+const analyze = @import("analyze.zig");
 
 const TextDocumentDidOpenNotification = text_document.TextDocumentDidOpenNotification;
 const TextDocumentDidChangeNotification = text_document.TextDocumentDidChangeNotification;

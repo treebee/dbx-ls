@@ -13,7 +13,7 @@ pub fn parse_notebook(allocator: std.mem.Allocator, state: *State, uri: []const 
     var line_iter = std.mem.splitSequence(u8, content, "\n");
     const first = line_iter.next().?;
     if (!std.mem.startsWith(u8, first, "# Databricks notebook source")) {
-        log.info("Not a databricks notebook: {s}", .{uri});
+        log.warn("Not a databricks notebook: {s}", .{uri});
         return error.NotANotebookDocument;
     }
 
