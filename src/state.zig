@@ -8,11 +8,29 @@ pub const ParsedNotebook = struct {
 
 pub const State = struct {
     notebooks: std.hash_map.StringHashMap(ParsedNotebook),
+    project_config: DatabricksProjectConfig,
+
+    pub const DatabricksProjectConfig = struct {
+        variables: std.hash_map.StringHashMap(Variable),
+    };
+
+    pub const DefaultValue = union(enum) {
+        string: []const u8,
+        integer: i64,
+        none,
+    };
+
+    pub const Variable = struct {
+        name: []const u8,
+        description: ?[]const u8,
+        default: DefaultValue,
+    };
 
     pub fn init(allocator: std.mem.Allocator) State {
-        return State{
-            .notebooks = std.hash_map.StringHashMap(ParsedNotebook).init(allocator),
-        };
+        const variables = std.hash_map.StringHashMap(Variable).init(allocator);
+        return State{ .notebooks = std.hash_map.StringHashMap(ParsedNotebook).init(allocator), .project_config = DatabricksProjectConfig{
+            .variables = variables,
+        } };
     }
 
     pub fn format(

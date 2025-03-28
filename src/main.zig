@@ -1,11 +1,10 @@
 const log = std.log.scoped(.main);
 pub const std_options: std.Options = .{
-    .log_level = .debug,
+    .log_level = .info,
     .logFn = logFn,
 };
 
 var log_stderr: bool = true;
-var log_level: std.log.Level = .info;
 var log_file: ?std.fs.File = null;
 
 pub fn logFn(
@@ -14,7 +13,7 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
-    var buffer: [8192]u8 = undefined;
+    var buffer: [16384]u8 = undefined;
     _ = std.fmt.bufPrint(&buffer, format, args) catch return;
 
     const level_txt: []const u8 = switch (level) {
@@ -106,10 +105,10 @@ pub fn main() !void {
             //     log.info("STATE *****************\n", .{});
             //     log.info("state: {s}\n", .{state});
             //     log.info("******************************", .{});
-            // } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
+        } else if (std.mem.eql(u8, method, "textDocument/didChange")) {
             const change_request = try std.json.parseFromSliceLeaky(TextDocumentDidChangeNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
-            _ = change_request;
             //log.info("didChange: {any}\n", .{change_request.params.contentChanges});
+            _ = change_request;
         } else if (std.mem.eql(u8, method, "textDocument/hover")) {
             const hover_request = try std.json.parseFromSliceLeaky(TextDocumentHoverNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
             log.info("hover: {any}\n", .{hover_request.params});
