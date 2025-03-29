@@ -14,16 +14,35 @@ pub const State = struct {
         variables: std.hash_map.StringHashMap(Variable),
     };
 
-    pub const DefaultValue = union(enum) {
+    pub const Value = union(enum) {
         string: []const u8,
         integer: i64,
         none,
+
+        pub fn format(
+            self: Value,
+            comptime fmt: []const u8,
+            options: std.fmt.FormatOptions,
+            writer: anytype,
+        ) !void {
+            _ = fmt;
+            _ = options;
+
+            switch (self) {
+                .string => try writer.print("{s}", .{self.string}),
+                .integer => try writer.print("{d}", .{self.integer}),
+                .none => try writer.print("null", .{}),
+            }
+
+            try writer.writeAll("");
+        }
     };
 
     pub const Variable = struct {
         name: []const u8,
         description: ?[]const u8,
-        default: DefaultValue,
+        default: Value,
+        targets: std.StringArrayHashMap(Value),
     };
 
     pub fn init(allocator: std.mem.Allocator) State {
@@ -49,7 +68,21 @@ pub const State = struct {
                 try writer.print("\t({d}) {s} {s}\n", .{ i, cell.language, cell.text });
             }
         }
-
+        var variable_iter = self.project_config.variables.keyIterator();
+        while (variable_iter.next()) |variable| {
+            try writer.print("{s}:\n\tdescription: {s}\n\tdefault: {s}\n\ttargets: ", .{
+                variable.*,
+                self.project_config.variables.get(variable.*).?.description orelse "null",
+                self.project_config.variables.get(variable.*).?.default,
+            });
+            var targets = self.project_config.variables.get(variable.*).?.targets.iterator();
+            while (targets.next()) |target| {
+                const target_name = target.key_ptr.*;
+                try writer.print("{s}=", .{target_name});
+                const target_var = target.value_ptr.*;
+                try writer.print("{s}\t", .{target_var});
+            }
+        }
         try writer.writeAll("");
     }
 };

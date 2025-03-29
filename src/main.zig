@@ -93,6 +93,7 @@ pub fn main() !void {
             const init_request = try std.json.parseFromSliceLeaky(initialize.InitializeRequest, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
             log.info("{any}\n", .{init_request});
             try analyze.scan_project(arena.allocator(), &state, init_request.params.workspaceFolders.?[0]);
+            log.info("state: {s}", .{state});
             const response = try rpc.encodeMessage(arena.allocator(), initialize.NewInitializeResponse(init_request.id));
             try stdout.print("{s}", .{response});
         } else if (std.mem.eql(u8, method, "textDocument/didOpen")) {
