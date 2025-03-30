@@ -111,8 +111,13 @@ pub fn main() !void {
             //log.info("didChange: {any}\n", .{change_request.params.contentChanges});
             _ = change_request;
         } else if (std.mem.eql(u8, method, "textDocument/hover")) {
-            const hover_request = try std.json.parseFromSliceLeaky(TextDocumentHoverNotification, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
+            const hover_request = try std.json.parseFromSliceLeaky(HoverRequest, arena.allocator(), json_message, .{ .ignore_unknown_fields = true });
             log.info("hover: {any}\n", .{hover_request.params});
+            const response = try rpc.encodeMessage(
+                arena.allocator(),
+                hover.NewHoverResponse(hover_request.id, "dev: three\nstaging: four\nproduction: six"),
+            );
+            try stdout.print("{s}", .{response});
         }
     }
 }
@@ -121,6 +126,7 @@ const std = @import("std");
 const rpc = @import("rpc.zig");
 const protocol = @import("lsp/protocol.zig");
 const initialize = @import("lsp/initialize.zig");
+const hover = @import("lsp/hover.zig");
 /// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
 const lib = @import("dbx-ls_lib");
 const State = @import("state.zig").State;
@@ -130,4 +136,4 @@ const analyze = @import("analyze.zig");
 
 const TextDocumentDidOpenNotification = text_document.TextDocumentDidOpenNotification;
 const TextDocumentDidChangeNotification = text_document.TextDocumentDidChangeNotification;
-const TextDocumentHoverNotification = text_document.TextDocumentHoverNotification;
+const HoverRequest = text_document.HoverRequest;

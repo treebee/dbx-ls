@@ -32,7 +32,8 @@ pub const TextDocumentDidChangeNotification = struct {
     };
 };
 
-pub const TextDocumentHoverNotification = struct {
+pub const HoverRequest = struct {
+    id: usize,
     jsonrpc: []const u8,
     method: []const u8,
     params: HoverParams,
