@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
     // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
 
+    const single_threaded = b.option(bool, "single-threaded", "Build a single threaded Executable");
     // Standard optimization options allow the person running `zig build` to select
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
     // set a preferred release mode, allowing the user to decide how to optimize.
@@ -37,6 +38,21 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    const yaml_module = b.dependency("yaml", .{
+        .target = target,
+        .optimize = optimize,
+    }).module("yaml");
+
+    const dbxls_module = b.addModule("dbx-ls", .{
+        .root_source_file = b.path("src/dbxls.zig"),
+        .target = target,
+        .optimize = optimize,
+        .single_threaded = single_threaded,
+        .imports = &.{
+            .{ .name = "yaml", .module = yaml_module },
+        },
     });
 
     // Modules can depend on one another using the `std.Build.Module.addImport` function.
@@ -70,11 +86,7 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(exe);
 
-    const yaml = b.dependency("yaml", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("yaml", yaml.module("yaml"));
+    exe.root_module.addImport("yaml", yaml_module);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
@@ -107,9 +119,13 @@ pub fn build(b: *std.Build) void {
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
-    const exe_unit_tests = b.addTest(.{
-        .root_module = exe_mod,
-    });
+    const exe_unit_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "dbx-ls", .module = dbxls_module }},
+    }) });
+    exe_unit_tests.root_module.addImport("yaml", yaml_module);
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 

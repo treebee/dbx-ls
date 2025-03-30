@@ -104,7 +104,8 @@ pub fn scan_project(allocator: std.mem.Allocator, state: *State, workspace: Work
     while (try walker.next()) |file| {
         switch (file.kind) {
             fs.File.Kind.file => {
-                if (std.mem.endsWith(u8, file.basename, ".yml") or std.mem.endsWith(u8, file.basename, ".yaml")) {
+                const ext = fs.path.extension(file.basename);
+                if (std.mem.eql(u8, ext, ".yml") or std.mem.eql(u8, ext, ".yaml")) {
                     log.debug("{any}: {s} {s}/{s}\n", .{ file.kind, file.basename, workspace.name, file.path });
                     const file_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ workspace.name, file.path });
                     try parse_databricks_config_file(allocator, file_path, state);
