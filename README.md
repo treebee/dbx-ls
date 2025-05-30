@@ -22,7 +22,7 @@ that use this notebook. Hover to show config of paramter for all tasks and targe
 The only option is to build from source. So make sure you have [Zig >= 0.14](https://ziglang.org/download/) installed.
 
 ```
-git clone https://githug.org/treebee/dbx-ls.git
+git clone https://github.com/treebee/dbx-ls.git
 cd dbx-ls
 zig build --release=fast
 cp zig-out/bin/dbx-ls /some/location/on/path
