@@ -1,0 +1,48 @@
+bundle:
+  name: dbx-ls-test-project
+
+variables:
+  variable1:
+    description: "Variable One"
+    default: 42
+  variable2:
+    description: "Variable Two"
+    default: "Twenty,Four"
+  variable3:
+    default: "Three"
+  variable4:
+    description: "My fourth variable"
+  variable5:
+    description: "A boolean variable"
+    default: false
+  connection:
+    default: source_staging
+    description: "The name of the connection to use as source"
+  environment:
+    description: "The name of the environment"
+    default: "development"
+
+include:
+  - jobs/*
+
+targets:
+  dev:
+    mode: development
+    variables:
+      variable2: "Sixty,Six"
+      variable4: 66
+      environment: "development"
+  staging:
+    mode: production
+    variables:
+      variable4: 4
+      variable5: true
+      environment: "staging"
+  production:
+    mode: production
+    variables:
+      variable3: "99"
+      variable4: 434
+      connection: source_production
+      environment: "production"
+      missing: "bla"

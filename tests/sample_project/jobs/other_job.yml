@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    other_job:
+      name: other_job
+      timeout_seconds: 3600
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 1200
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: source_to_bronze
+          notebook_task:
+            notebook_path: "${workspace.root_path}/files/src/sample_project/source_to_bronze"
+            source: WORKSPACE
+            base_parameters:
+              target: "bronze.dummy"
+          job_cluster_key: job_cluster
+      job_clusters:
+        - job_cluster_key: job_cluster
+      queue:
+        enabled: true
+      parameters:
+        - name: connection
+          default: "${var.connection}"
+        - name: table
+          default: source_table
+        - name: environment
+          default: "${var.environment}"
+        - name: missing
+          default: "notmissinghere"
