@@ -171,7 +171,6 @@ pub fn main() !void {
                 .text = change_request.params.contentChanges[0].text,
             };
             try state.documents.put(std.mem.trim(u8, document.uri, "\n"), document);
-            try handle_document(allocator, stdout, &state, document);
         } else if (std.mem.eql(u8, method, "textDocument/didSave")) {
             log.debug("did save payload: {s}", .{json_message});
             const save_request = try std.json.parseFromSliceLeaky(
@@ -187,6 +186,11 @@ pub fn main() !void {
                     &state,
                     state.workspace.?,
                 );
+            } else {
+                const document = state.documents.get(save_request.params.textDocument.uri);
+                if (document) |doc| {
+                    try handle_document(allocator, stdout, &state, doc);
+                }
             }
         } else if (std.mem.eql(u8, method, "textDocument/hover")) {
             const hover_request = try std.json.parseFromSliceLeaky(
